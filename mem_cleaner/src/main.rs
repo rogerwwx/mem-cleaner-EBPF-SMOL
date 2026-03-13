@@ -5,7 +5,7 @@ use aya::Ebpf; // 修复：替换废弃的 Bpf 为 Ebpf
 use bytes::BytesMut;
 use mem_cleaner_common::ProcessEvent;
 
-use fxhash::FxHashSet;
+use fxhash::{FxHashMap, FxHashSet};
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 
@@ -95,6 +95,13 @@ fn get_oom_score(pid: u32) -> i32 {
         .ok()
         .and_then(|c| c.trim().parse::<i32>().ok())
         .unwrap_or(-1000)
+}
+
+fn get_start_time(pid: u32) -> Option<u64> {
+    let content = fs::read_to_string(format!("/proc/{}/stat", pid)).ok()?;
+    let parts: Vec<&str> = content.split_whitespace().collect();
+    // 第22个字段是 starttime
+    parts.get(21)?.parse::<u64>().ok()
 }
 
 fn get_cmdline(pid: u32) -> String {
