@@ -61,5 +61,5 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mem_cleaner_arm64
+          name: mem_cleaner_arm64_smol
           path: output/mem_cleaner

@@ -9,9 +9,8 @@ use fxhash::FxHashSet;
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 
-// 引入 Smol 和 Async-io
-use smol::Async;
 use smol;
+use smol::Async;
 
 // TimerFd 相关依赖
 use nix::sys::time::TimeSpec;
@@ -35,6 +34,11 @@ const OOM_SCORE_THRESHOLD: i32 = 800;
 const INIT_DELAY_SECS: u64 = 2;
 const DEFAULT_INTERVAL: u64 = 30;
 const MIN_APP_UID: u32 = 10000;
+
+struct ProcInfo {
+    start_time: u64,
+    cmdline: String,
+}
 
 #[repr(C, align(8))]
 struct AlignedBpf([u8; include_bytes!("mem_cleaner_ebpf.o").len()]);
@@ -266,7 +270,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let worker_logger = logger.clone(); // 传递线程安全的 Logger
 
         thread::spawn(move || {
-            let mut monitoring_pids: FxHashSet<u32> = FxHashSet::default();
+            let mut monitoring_pids: FxHashMap<u32, ProcInfo> = FxHashMap::default();
             let mut pending_queue: VecDeque<(u32, Instant)> = VecDeque::new();
             let mut next_cleanup = Instant::now() + Duration::from_secs(worker_config.interval);
 
@@ -311,7 +315,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     && !cmdline.contains("zygote")
                                     && !is_in_whitelist(&cmdline, &worker_config.whitelist)
                                 {
-                                    monitoring_pids.insert(pid);
+                                    if let Some(start_time) = get_start_time(pid) {
+                                        monitoring_pids.insert(
+                                            pid,
+                                            ProcInfo {
+                                                start_time,
+                                                cmdline,
+                                            },
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -322,7 +334,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if now >= next_cleanup {
                     let mut pids_to_remove = Vec::new();
                     let mut killed_in_this_round = Vec::new();
-                    for &pid in &monitoring_pids {
+                    for (&pid, proc) in &monitoring_pids {
                         match get_process_uid(pid) {
                             Some(uid) if uid < MIN_APP_UID => {
                                 pids_to_remove.push(pid);
@@ -334,16 +346,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             _ => {}
                         }
-                        let cmdline = get_cmdline(pid);
-                        if cmdline.is_empty() {
-                            pids_to_remove.push(pid);
-                            continue;
+                        match get_start_time(pid) {
+                            Some(start) if start != proc.start_time => {
+                                pids_to_remove.push(pid);
+                                continue;
+                            }
+                            None => {
+                                pids_to_remove.push(pid);
+                                continue;
+                            }
+                            _ => {}
                         }
                         let score = get_oom_score(pid);
                         if score >= OOM_SCORE_THRESHOLD {
                             if kill(Pid::from_raw(pid as i32), Signal::SIGKILL).is_ok() {
-                                killed_in_this_round
-                                    .push(format!("PID:{} | OOM:{} | {}", pid, score, cmdline));
+                                killed_in_this_round.push(format!(
+                                    "PID:{} | OOM:{} | {}",
+                                    pid, score, proc.cmdline
+                                ));
                                 pids_to_remove.push(pid);
                             } else {
                                 pids_to_remove.push(pid);
