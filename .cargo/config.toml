@@ -1,0 +1,11 @@
+[target.aarch64-linux-android]
+linker = "aarch64-linux-android-clang"
+
+rustflags = [
+    "-C", "link-arg=-static-libgcc",
+    "-C", "link-arg=-Wl,--gc-sections",
+    "-C", "link-arg=-Wl,--strip-all",
+    "-C", "link-arg=-Wl,--as-needed",
+    "-C", "link-arg=-Wl,--icf=all",
+    "-C", "link-arg=-Wl,--no-eh-frame-hdr",
+]

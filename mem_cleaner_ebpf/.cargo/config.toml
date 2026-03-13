@@ -1,0 +1,7 @@
+[build]
+target = "bpfel-unknown-none"
+
+[target.bpfel-unknown-none]
+rustflags = [
+    "-C", "linker=bpf-linker"  # <--- 这行是核心！没有它，Aya 就会报错
+]

@@ -1,0 +1,22 @@
+[workspace]
+members = [
+    "mem_cleaner",
+    "mem_cleaner_ebpf",
+    "mem_cleaner_common",
+]
+resolver = "2"
+
+# 全局 Release 配置 (保留你极致的体积压缩，作用于 Android 主程序)
+[profile.release]
+opt-level = "z"
+lto = "fat"
+panic = "abort"
+strip = "symbols"
+codegen-units = 1
+incremental = false
+debug = false
+rpath = false
+
+# eBPF 内核态包的局部覆盖
+[profile.release.package.mem_cleaner_ebpf]
+opt-level = 3

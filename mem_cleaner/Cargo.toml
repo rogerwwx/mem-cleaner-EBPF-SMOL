@@ -1,0 +1,25 @@
+[package]
+name = "mem_cleaner"
+version = "0.4.0" # 版本升级
+edition = "2021"
+
+[dependencies]
+aya = { version = "0.13.1", features = ["async_std"] }
+
+bytes = "1.11.1"
+
+# nix 保持精简
+nix = { version = "0.31.2", default-features = false, features = ["signal", "process","time"] }
+
+# 时间处理
+time = { version = "0.3.36", default-features = false, features = ["formatting", "local-offset", "macros", "std"] }
+
+# 高性能 Hash
+fxhash = "0.2.1"
+
+smol = "2.0.2"
+
+async-io = "2.2"
+
+# 本地中间层依赖
+mem_cleaner_common = { path = "../mem_cleaner_common" }
