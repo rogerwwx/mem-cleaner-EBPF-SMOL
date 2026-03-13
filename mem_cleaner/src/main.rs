@@ -10,7 +10,7 @@ use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 
 // 引入 Smol 和 Async-io
-use async_io::Async;
+use smol::Async;
 use smol;
 
 // TimerFd 相关依赖
