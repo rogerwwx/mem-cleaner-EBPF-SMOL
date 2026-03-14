@@ -16,12 +16,12 @@ use smol::Async;
 use nix::sys::time::TimeSpec;
 use nix::sys::timerfd::{ClockId, Expiration, TimerFd, TimerFlags, TimerSetTimeFlags};
 
+use crossbeam_channel::{bounded, RecvTimeoutError};
 use std::collections::VecDeque;
 use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::os::unix::fs::MetadataExt;
-use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -272,7 +272,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // ==========================================
         // 🧵 业务线程 (纯标准库，无 Smol)
         // ==========================================
-        let (tx, rx) = mpsc::channel::<u32>();
+        let (tx, rx) = bounded::<u32>(100_000);
         let worker_config = config.clone();
         let worker_logger = logger.clone(); // 传递线程安全的 Logger
 

@@ -8,6 +8,8 @@ aya = { version = "0.13.1", features = ["async_std"] }
 
 bytes = "1.11.1"
 
+crossbeam-channel = "0.5.15"
+
 # nix 保持精简
 nix = { version = "0.31.2", default-features = false, features = ["signal", "process","time"] }
 
