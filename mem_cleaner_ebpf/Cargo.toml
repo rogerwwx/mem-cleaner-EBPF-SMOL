@@ -1,7 +1,7 @@
 [package]
 name = "mem_cleaner_ebpf"
 version = "0.2.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 aya-ebpf = "0.1.1"
