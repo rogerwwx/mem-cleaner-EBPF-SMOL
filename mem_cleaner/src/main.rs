@@ -50,9 +50,11 @@ enum WhitelistRule {
     Prefix(String),
 }
 
+// ====== 扩展配置结构体，增加 enable_log 字段 ======
 struct AppConfig {
     interval: u64,
     whitelist: FxHashSet<WhitelistRule>,
+    enable_log: bool,
 }
 
 // 修复版：基于 timerfd 的异步 sleep（非阻塞 + 安全的 unsafe）
@@ -128,9 +130,12 @@ fn is_in_whitelist(cmdline: &str, whitelist: &FxHashSet<WhitelistRule>) -> bool 
     })
 }
 
+// ====== 扩展 load_config，解析 enable_log: true/false ======
 fn load_config(path: &str) -> AppConfig {
     let mut interval = DEFAULT_INTERVAL;
     let mut whitelist = FxHashSet::default();
+    let mut enable_log = true; // 默认开启日志
+
     if let Ok(content) = fs::read_to_string(path) {
         let mut in_wl = false;
         for line in content
@@ -141,6 +146,12 @@ fn load_config(path: &str) -> AppConfig {
             if line.starts_with("interval:") {
                 if let Some(v) = line.split(':').nth(1).and_then(|v| v.trim().parse().ok()) {
                     interval = v;
+                }
+                in_wl = false;
+            } else if line.starts_with("enable_log:") {
+                if let Some(v) = line.split(':').nth(1) {
+                    let s = v.trim().to_lowercase();
+                    enable_log = matches!(s.as_str(), "true" | "1" | "yes" | "on");
                 }
                 in_wl = false;
             } else if line.starts_with("whitelist:") {
@@ -156,6 +167,7 @@ fn load_config(path: &str) -> AppConfig {
     AppConfig {
         interval,
         whitelist,
+        enable_log,
     }
 }
 
@@ -245,16 +257,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let config = Arc::new(load_config(&args[1]));
-        // 修复：用 Arc<Mutex> 封装 Logger，实现线程安全共享
-        let logger = Arc::new(Mutex::new(Logger::new(if args.len() > 2 {
-            Some(args[2].clone())
+
+        // ====== 根据 enable_log 决定是否创建 Logger 实例 ======
+        // logger_holder 的类型是 Arc<Mutex<Option<Logger>>>
+        let logger_holder: Arc<Mutex<Option<Logger>>> = if config.enable_log {
+            Arc::new(Mutex::new(Logger::new(if args.len() > 2 {
+                Some(args[2].clone())
+            } else {
+                None
+            })))
         } else {
-            None
-        })));
-        // 初始化启动日志
-        if let Ok(mut l) = logger.lock() {
-            if let Some(l_inner) = &mut *l {
-                l_inner.write_startup();
+            // 日志被禁用，保持 None
+            Arc::new(Mutex::new(None))
+        };
+
+        // 初始化启动日志（仅在 enable_log = true 且 Logger 有路径时写入）
+        if config.enable_log {
+            if let Ok(mut l) = logger_holder.lock() {
+                if let Some(l_inner) = &mut *l {
+                    l_inner.write_startup();
+                }
             }
         }
 
@@ -274,7 +296,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // ==========================================
         let (tx, rx) = bounded::<u32>(100_000);
         let worker_config = config.clone();
-        let worker_logger = logger.clone(); // 传递线程安全的 Logger
+        let worker_logger = logger_holder.clone(); // 传递线程安全的 Logger holder
 
         thread::spawn(move || {
             let mut monitoring_pids: FxHashMap<u32, ProcInfo> = FxHashMap::default();
@@ -377,8 +399,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     }
-                    // 修复：线程安全地写入日志
-                    if !killed_in_this_round.is_empty() {
+                    // ====== 按 enable_log 决定是否写日志 ======
+                    if worker_config.enable_log && !killed_in_this_round.is_empty() {
                         if let Ok(mut l) = worker_logger.lock() {
                             if let Some(l_inner) = &mut *l {
                                 l_inner.write_cleanup(&killed_in_this_round);
